@@ -1,30 +1,65 @@
-// swift-tools-version:4.0
+// swift-tools-version:5.3
 
 import PackageDescription
 
 let pkg = Package(name: "PromiseKit")
-pkg.products = [
-    .library(name: "PromiseKit", targets: ["PromiseKit"]),
+pkg.platforms = [
+    .macOS(.v10_10),
+    .iOS(.v10),       //FIXME strictly 8.0, but Tests require 10
+    .tvOS(.v10),      //FIXME strictly 9.0, but Tests require 10
+    .watchOS(.v3)
 ]
+pkg.swiftLanguageVersions = [.v5]
 
-let pmk: Target = .target(name: "PromiseKit")
-pmk.path = "Sources"
-pmk.exclude = [
-    "AnyPromise.swift",
-    "AnyPromise.m",
-    "PMKCallVariadicBlock.m",
-    "dispatch_promise.m",
-    "join.m",
-    "when.m",
-    "NSMethodSignatureForBlock.m",
-    "after.m",
-    "hang.m",
-    "race.m",
-    "Deprecations.swift"
+#if !os(Linux)
+pkg.dependencies = [
+    .package(url: "https://github.com/AliSoftware/OHHTTPStubs", from: "9.1.0")
 ]
-pkg.swiftLanguageVersions = [3, 4, 5]
-pkg.targets = [
-    pmk,
-    .testTarget(name: "APlus", dependencies: ["PromiseKit"], path: "Tests/A+"),
-    .testTarget(name: "CorePromise", dependencies: ["PromiseKit"], path: "Tests/CorePromise"),
+#endif
+
+func dependencies(for name: String) -> [Target.Dependency] {
+    switch name {
+    case "PromiseKit":
+        return []
+    default:
+        return [.target(name: "PromiseKit")]
+    }
+}
+
+func has(tests name: String) -> Target? {
+    switch name {
+    case "PMKFoundation":
+        var deps = [Target.Dependency.target(name: "PMKFoundation")]
+      #if !os(Linux)
+        deps.append(.product(name: "OHHTTPStubsSwift", package: "OHHTTPStubs"))
+      #endif
+        return .testTarget(name: "\(name)Tests", dependencies: deps, path: "Tests/\(name)")
+    case "PMKHomeKit", "PMKMapKit", "PMKCoreLocation":
+        return .testTarget(name: "\(name)Tests", dependencies: [.target(name: name)], path: "Tests/\(name)")
+    default:
+        return nil
+    }
+}
+
+for name in ["PMKCloudKit", "PMKCoreLocation", "PMKFoundation", "PMKHealthKit", "PMKHomeKit", "PMKMapKit", "PMKPhotos", "PMKStoreKit", "PromiseKit"] {
+
+  #if os(Linux)
+    guard name == "PromiseKit" || name == "PMKFoundation" else { continue }
+  #endif
+
+    pkg.targets.append(.target(name: name, dependencies: dependencies(for: name)))
+    pkg.products.append(.library(name: name, targets: [name]))
+
+    if let testTarget = has(tests: name) {
+        pkg.targets.append(testTarget)
+    }
+}
+
+pkg.targets += [
+    .testTarget(name: "Core", dependencies: ["PromiseKit"]),
+    .testTarget(name: "Cancel", dependencies: ["PromiseKit"]),
+    .testTarget(name: "APlusSwiftTests", dependencies: ["PromiseKit"], path: "Tests/A+/Swift"),
+    .testTarget(name: "APlusJSTests", dependencies: ["PromiseKit"], path: "Tests/A+/JavaScript", exclude: [
+        "index.js", "package-lock.json", "package.json", "README.md", "webpack.config.js", "build", "node_modules"
+    ]),
 ]
